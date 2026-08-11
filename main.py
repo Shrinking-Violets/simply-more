@@ -22,9 +22,9 @@ def build_dataset(words):
             context = context[1:] + [ix] # crop and append the new character index to the context
         
             
-        X = torch.tensor(X) #convert it to tensor
-        Y = torch.tensor(Y)
-        return X, Y
+    X = torch.tensor(X) #convert it to tensor
+    Y = torch.tensor(Y)
+    return X, Y
 
 #one hot encoding
 import torch.nn.functional as F
@@ -40,8 +40,8 @@ Xte, Yte = build_dataset(words[n2:])
 
 # randomly initialize 27 neurons' weights. each neuron receives 27 inputs
 g = torch.Generator().manual_seed(2147483647) # for reproducibility
-C = torch.randn((27, 10), generator=g)
-W1 = torch.randn((30, 200), generator=g)
+C = torch.randn((27, 30), generator=g)
+W1 = torch.randn((90, 200), generator=g)
 b1 = torch.randn(200, generator=g)
 W2 = torch.randn((200, 27), generator=g)
 b2 = torch.randn(27, generator=g)
@@ -80,7 +80,19 @@ for i in range(10000): # 10000 iterations of training
 
 # finally, sample from the 'neural net' model
 g = torch.Generator().manual_seed(2147483647 + 10)
+# training loss 
+emb = C[Xtr] # (32, 3, 2)
+h = torch.tanh(emb.view(-1, 90) @ W1 + b1) # (32, 100)
+logits = h @ W2 + b2 # (32, 27)
+loss = F.cross_entropy(logits, Ytr)
+loss
 
+# validation loss
+emb = C[Xdev] # (32, 3, 2)
+h = torch.tanh(emb.view(-1, 90) @ W1 + b1) # (32, 100)
+logits = h @ W2 + b2 # (32, 27)
+loss = F.cross_entropy(logits, Ydev)
+loss
 for _ in range(20):
     
     out = []
