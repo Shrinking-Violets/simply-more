@@ -9,20 +9,20 @@ stoi["."] = 0
 itos = {i:s for s,i in stoi.items()}
 
 #creating dataset
-xs, ys, zs = [], [], []
+block_size = 3
+xs, ys = [], []
 for w in words:
-    chs = ["."] + list(w) + ["."] # adding start and end tokens 
-    for ch1, ch2, ch3 in zip(chs,chs[1:],chs[2:]):#for each pair of characters in the word
-        ix1 = stoi[ch1] #char to index
-        ix2 = stoi[ch2]
-        ix3 = stoi[ch3]
-        xs.append(ix1) #append the index of the first character to xs and ys
-        ys.append(ix2)
-        zs.append(ix3)
+    context = [0]*block_size
+    
+    for ch in w + ".":#for each pair of characters in the word
+        ix = stoi[ch] #char to index
+        xs.append(context) #append the index of the first character to xs and ys
+        ys.append(ix)
+        context = context[1:] + [ix] # crop and append the new character index to the context
+    
         
 xs = torch.tensor(xs) #convert it to tensor
 ys = torch.tensor(ys)
-zs = torch.tensor(zs)
 num = xs.nelement()
 
 #one hot encoding
