@@ -10,69 +10,90 @@ itos = {i:s for s,i in stoi.items()}
 
 #creating dataset
 block_size = 3
-xs, ys = [], []
-for w in words:
-    context = [0]*block_size
-    
-    for ch in w + ".":#for each pair of characters in the word
-        ix = stoi[ch] #char to index
-        xs.append(context) #append the index of the first character to xs and ys
-        ys.append(ix)
-        context = context[1:] + [ix] # crop and append the new character index to the context
-    
+def build_dataset(words):
+    X, Y = [], []
+    for w in words:
+        context = [0]*block_size
         
-xs = torch.tensor(xs) #convert it to tensor
-ys = torch.tensor(ys)
-num = xs.nelement()
+        for ch in w + ".":#for each pair of characters in the word
+            ix = stoi[ch] #char to index
+            X.append(context) #append the index of the first character to xs and ys
+            Y.append(ix)
+            context = context[1:] + [ix] # crop and append the new character index to the context
+        
+            
+        X = torch.tensor(X) #convert it to tensor
+        Y = torch.tensor(Y)
+        return X, Y
 
 #one hot encoding
 import torch.nn.functional as F
-xenc = F.one_hot(xs, num_classes=27).float()
-#print(xenc.shape)
+import random
+random.seed(42)
+random.shuffle(words)
+n1 = int(0.8*len(words))
+n2 = int(0.9*len(words))
+
+Xtr, Ytr = build_dataset(words[:n1])
+Xdev, Ydev = build_dataset(words[n1:n2])
+Xte, Yte = build_dataset(words[n2:])
 
 # randomly initialize 27 neurons' weights. each neuron receives 27 inputs
-g = torch.Generator().manual_seed(2147483647)
-W = torch.randn((27, 27), generator=g, requires_grad=True)
-for k in range(100): # 100 iterations of training
-    xenc = F.one_hot(xs, num_classes=27).float() # input to the network: one-hot encoding
-    logits = xenc @ W # predict log-counts
-    #counts = logits.exp() # counts, equivalent to N
-    #probs = counts / counts.sum(1, keepdims=True) # probabilities for next character
-    # btw: the last 2 lines here are together called a 'softmax'
-    cross_entropy = torch.nn.functional.cross_entropy(logits, ys) # built-in cross-entropy loss, for comparison
-   #loss = -probs[torch.arange(num), ys].log().mean() + 0.01*(W**2).mean() # L2 regularization
-    loss = cross_entropy + 0.01*(W**2).mean() # L2 regularization 
-    print(loss.item())
+g = torch.Generator().manual_seed(2147483647) # for reproducibility
+C = torch.randn((27, 10), generator=g)
+W1 = torch.randn((30, 200), generator=g)
+b1 = torch.randn(200, generator=g)
+W2 = torch.randn((200, 27), generator=g)
+b2 = torch.randn(27, generator=g)
+parameters = [C, W1, b1, W2, b2]
 
+for p in parameters:
+    p.requires_grad = True
+lre = torch.linspace(-3, 0, 1000)
+lrs = 10**lre
+lri = []
+lossi = []
+stepi = []
+
+
+for i in range(10000): # 10000 iterations of training
+    ix = torch.randint(0, Xtr.shape[0], (32,)) # sample a batch of 32 random indices
+     # forward pass
+    emb = C[Xtr[ix]] # (32, 3, 2)
+    h = torch.tanh(emb.view(-1, 90) @ W1 + b1) # (32, 100)
+    logits = h @ W2 + b2 # (32, 27)
+    loss = F.cross_entropy(logits, Ytr[ix])
+    #print(loss.item())
+  
     # backward pass
-    W.grad = None # set to zero the gradient
+    for p in parameters:
+        p.grad = None
     loss.backward()
 
     # update
-    W.data += -50 * W.grad
+    #lr = lrs[i]
+    lr = 0.1 if i < 100000 else 0.01
+    for p in parameters:
+        p.data += -lr * p.grad
+    stepi.append(i)
+    lossi.append(loss.log10().item())
 
 # finally, sample from the 'neural net' model
-g = torch.Generator().manual_seed(2147483647)
+g = torch.Generator().manual_seed(2147483647 + 10)
 
-for i in range(5):
-  
-  out = []
-  ix = 0
-  while True:
+for _ in range(20):
     
-    # ----------
-    # BEFORE:
-    #p = P[ix]
-    # ----------
-    # NOW:
-    xenc = F.one_hot(torch.tensor([ix]), num_classes=27).float()
-    logits = xenc @ W # predict log-counts
-    counts = logits.exp() # counts, equivalent to N
-    p = counts / counts.sum(1, keepdims=True) # probabilities for next character
-  
+    out = []
+    context = [0] * block_size # initialize with all ...
+    while True:
+      emb = C[torch.tensor([context])] # (1,block_size,d)
+      h = torch.tanh(emb.view(1, -1) @ W1 + b1)
+      logits = h @ W2 + b2
+      probs = F.softmax(logits, dim=1)
+      ix = torch.multinomial(probs, num_samples=1, generator=g).item()
+      context = context[1:] + [ix]
+      out.append(ix)
+      if ix == 0:
+        break
     
-    ix = torch.multinomial(p, num_samples=1, replacement=True, generator=g).item()
-    out.append(itos[ix])
-    if ix == 0:
-      break
-  print(''.join(out))
+    print(''.join(itos[i] for i in out))
